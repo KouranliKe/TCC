@@ -82,7 +82,7 @@ runarima = function(ind, df, variable, horizon, seasonal = FALSE) {
   y_train = ts(df[ind, variable], frequency=12)
   
   # Fit the ARIMA model automatically, using BIC for model selection
-  modelest = forecast::auto.arima(y_train, ic = "bic")
+  modelest = forecast::auto.arima(y_train, ic = "bic", seasonal=seasonal)
   
   # Forecast forward 'horizon' steps
   fcst = forecast::forecast(modelest, h = horizon)
