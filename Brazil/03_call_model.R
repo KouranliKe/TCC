@@ -63,8 +63,9 @@ models_parallel <- mclapply(for_ind, function(i) {
     horizon=i,
     variable="PRECOS12_IPCA12"
     ,n_lags = 12 # comment for arima
-    #,adaptive = TRUE # uncomment for adaLASSO
+    #,adaptive=TRUE # uncomment for adaLASSO
     #,seasonal=TRUE # uncomment for arima
+    #,post=TRUE # uncomment for post-LASSO
   )
   return(model)
 }, mc.cores = num_cores)
