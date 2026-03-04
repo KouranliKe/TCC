@@ -1,24 +1,38 @@
 dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, nofact = FALSE) {
-  df=df[ind,]
-  y=df[,variable]
+  df = df[ind,]
+  y = df[,variable]
   
-  if(nofact==TRUE){
-      x=df
-  }else{
-      factors=princomp(scale(df))$scores[,1:4]
-      if(factonly == TRUE){
-        x = cbind(df[,variable],factors)
-      }else{
-        x=cbind(df,factors)
-      }
+  if(nofact == TRUE){
+    x = df
+    base_names = colnames(df)
+  } else {
+    factors = princomp(scale(df))$scores[,1:4]
+    colnames(factors) = paste0("PC", 1:4)
+    
+    if(factonly == TRUE){
+      x = cbind(df[,variable], factors)
+      base_names = c(variable, colnames(factors))
+      colnames(x) = base_names
+    } else {
+      x = cbind(df, factors)
+      base_names = c(colnames(df), colnames(factors))
+      colnames(x) = base_names
     }
+  }
   
-  X=embed(as.matrix(x),n_lags)
+  X = embed(as.matrix(x), n_lags)
   
-  Xin=X[-c((nrow(X)-horizon+1):nrow(X)),]
-  Xout=X[nrow(X),]
-  Xout=t(as.vector(Xout))
-  yin=tail(y,nrow(Xin))
+  lags = rep(0:(n_lags - 1), each = length(base_names))
+  suffixes = ifelse(lags == 0, "", paste0("_lag", lags))
+  
+  col_names = paste0(rep(base_names, times = n_lags), suffixes)
+  colnames(X) = col_names
+  
+  Xin = X[-c((nrow(X)-horizon+1):nrow(X)),]
+  
+  Xout = X[nrow(X), , drop = FALSE] 
+  
+  yin = tail(y, nrow(Xin))
   
   return(list(Xin = Xin, Xout = Xout, yin = yin))
 }
@@ -407,8 +421,6 @@ runlightgbm = function(ind, df, variable, horizon, n_lags = 4, extra_trees = FAL
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
-  colnames(Xin) = paste0("Feature_", 1:ncol(Xin))
-  colnames(Xout) = paste0("Feature_", 1:ncol(Xin))
   
   dtrain = lightgbm::lgb.Dataset(data = Xin, label = yin)
   
