@@ -14,9 +14,9 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name = "rLASSO"
+model_name = "lightGBM-ERT"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function = runrlasso
+model_function = runlightgbm
 #####
 
 
@@ -31,49 +31,51 @@ rownames(data) = as.character(dates)
 nwindows = 120
 y_out = tail(data[,"PRECOS12_IPCA12"],nwindows)
 out_dates <- as.Date(tail(dates, nwindows))
-model_list = list()
 for_ind <- c(1, 3, 6)
 
 
 # Single-core for loop, used for debugging purposes since multi-core debugging is harder
-# for(i in for_ind){
-#   model = rolling_window(
-#     fn=model_function,
-#     df=data,
-#     nwindow=nwindows+i-1,
-#     horizon=i,
-#     variable="PRECOS12_IPCA12"
-#     ,n_lags = 12 # comment for ARIMA
-#     #,adaptive = TRUE # uncomment for adaLASSO
-#     #,seasonal=TRUE # uncomment for arima
-#     ,post = TRUE # uncomment for post-lasso
-#   )
-#   model_list[[i]] = model
-#   cat(i,"\n")
-# }
-
-# Multi-core forecasting for better performance
-num_cores <- min(length(for_ind), detectCores() - 1)
-
-models_parallel <- mclapply(for_ind, function(i) {
+model_list = list()
+for(i in for_ind){
   model = rolling_window(
     fn=model_function,
     df=data,
     nwindow=nwindows+i-1,
     horizon=i,
     variable="PRECOS12_IPCA12"
-    ,n_lags = 12 # comment for arima
-    #,adaptive=TRUE # uncomment for adaLASSO
+    ,n_lags = 12 # comment for ARIMA
+    #,adaptive = TRUE # uncomment for adaLASSO
     #,seasonal=TRUE # uncomment for arima
-    #,post=TRUE # uncomment for post-LASSO
+    #,post = TRUE # uncomment for post-lasso
+    ,extra_trees = TRUE # uncomment for lightgbm-ert
   )
-  return(model)
-}, mc.cores = num_cores)
-
-model_list = list()
-for(k in seq_along(for_ind)) {
-  model_list[[ for_ind[k] ]] <- models_parallel[[k]]
+  model_list[[i]] = model
+  cat(i,"\n")
 }
+
+# Multi-core forecasting for better performance
+# num_cores <- min(length(for_ind), detectCores() - 1)
+# 
+# models_parallel <- mclapply(for_ind, function(i) {
+#   model = rolling_window(
+#     fn=model_function,
+#     df=data,
+#     nwindow=nwindows+i-1,
+#     horizon=i,
+#     variable="PRECOS12_IPCA12"
+#     ,n_lags = 12 # comment for arima
+#     #,seasonal=TRUE # uncomment for arima
+#     #,adaptive=TRUE # uncomment for adaLASSO
+#     #,post=TRUE # uncomment for post-LASSO
+#     #,extra_trees = TRUE # uncomment for lightgbm-ert
+#   )
+#   return(model)
+# }, mc.cores = num_cores)
+# 
+# model_list = list()
+# for(k in seq_along(for_ind)) {
+#   model_list[[ for_ind[k] ]] <- models_parallel[[k]]
+# }
 
 forecasts = Reduce(
   f = cbind,

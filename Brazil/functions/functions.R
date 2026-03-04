@@ -1,26 +1,17 @@
-dataprep = function(ind,df,variable,horizon,n_lags = 4, add_dummy = TRUE, univar = FALSE, factonly = FALSE, nofact = FALSE)
-{
+dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, nofact = FALSE) {
   df=df[ind,]
   y=df[,variable]
   
   if(nofact==TRUE){
-    if(univar==FALSE){
       x=df
-    }else{
-      x = as.matrix(df[,variable])
-    }
   }else{
-    if(univar==FALSE){
       factors=princomp(scale(df))$scores[,1:4]
       if(factonly == TRUE){
         x = cbind(df[,variable],factors)
       }else{
         x=cbind(df,factors)
       }
-    }else{
-      x = as.matrix(df[,variable])
     }
-  }
   
   X=embed(as.matrix(x),n_lags)
   
@@ -29,26 +20,7 @@ dataprep = function(ind,df,variable,horizon,n_lags = 4, add_dummy = TRUE, univar
   Xout=t(as.vector(Xout))
   yin=tail(y,nrow(Xin))
   
-  if("2008-11-01" %in% names(yin)){
-    
-    dummy=rep(0,length(yin))
-    intervention=which(names(yin)=="2008-11-01")
-    dummy[intervention]=1
-    if(add_dummy == TRUE){
-      Xin=cbind(Xin,dummy)
-      Xout=cbind(Xout,0)
-    }
-    
-  }else{
-    dummy = rep(0,length(yin))
-    if(add_dummy == TRUE){
-      Xin=cbind(Xin,dummy)
-      Xout=cbind(Xout,0)
-    }
-  }
-  
-  return(list(dummy = dummy, Xin = Xin, Xout = Xout, yin = yin))
-  
+  return(list(Xin = Xin, Xout = Xout, yin = yin))
 }
 
 runlasso=function(ind,df,variable,horizon, n_lags = 4, alpha = 1, alpha2 = 1, adaptive = FALSE){
@@ -112,11 +84,10 @@ runrf=function(ind,df,variable,horizon,n_lags = 4){
 }
 
 runrfols=function(ind,df,variable,horizon,n_lags = 4){
-  prep_data = dataprep(ind,df,variable,horizon,n_lags, add_dummy = FALSE)
+  prep_data = dataprep(ind,df,variable,horizon,n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
-  dummy = prep_data$dummy
   
   modelest=randomForest::randomForest(Xin,yin,keep.inbag = TRUE,maxnodes = 25,ntree=500)
   samples=modelest$inbag
@@ -133,10 +104,10 @@ runrfols=function(ind,df,variable,horizon,n_lags = 4){
     tr=randomForest::getTree(modelest,k)
     selected=unique(tr[,3])
     selected=sort(selected[selected>0])
-    modelols=lm(yaux~xaux[,selected]+dummy[sboot])
+    modelols=lm(yaux~xaux[,selected])
     cols=coef(modelols)
     cols[is.na(cols)]=0
-    predaux[k]=c(1,Xout[selected],0)%*%cols
+    predaux[k]=c(1,Xout[selected])%*%cols
   }
   
   forecast=mean(predaux)
@@ -208,33 +179,28 @@ runcsr=function(ind,df,variable,horizon,n_lags = 4){
 }
 
 runfact=function(ind,df,variable,horizon,n_lags = 4){
-  prep_data = dataprep(ind,df,variable,horizon,n_lags, factonly = TRUE, add_dummy = FALSE)
+  prep_data = dataprep(ind,df,variable,horizon,n_lags, factonly = TRUE)
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
-  dummy = prep_data$dummy
   
   bb=Inf
   for(i in seq(5,20,5)){
-    m=lm(yin~Xin[,1:i]+dummy)
+    m=lm(yin~Xin[,1:i])
     crit=BIC(m)
     if(crit<bb){
       bb=crit
       modelest=m
       f.coef=coef(modelest)
-      coefdum=f.coef[length(f.coef)]
-      f.coef=f.coef[-length(f.coef)]
     }
   }
   coef=rep(0,ncol(Xin)+1)
   coef[1:length(f.coef)]=f.coef
-  coef=c(coef,coefdum)
   coef[is.na(coef)]=0
   
-  forecast=(cbind(1,Xout,0)%*%coef)[1]
+  forecast=(cbind(1,Xout)%*%coef)[1]
   
   ## outputs
-  
   outputs = list(coef = coef)
   
   return(list(forecast=forecast, outputs = outputs))
@@ -243,16 +209,10 @@ runfact=function(ind,df,variable,horizon,n_lags = 4){
 runtfact=function(ind,df,variable,horizon,n_lags = 4){
   
   dfaux = df[ind,]
-  dummy = rep(0, nrow(dfaux))
-  
-  if("2008-11-01" %in% rownames(dfaux) && variable %in% c("CPI", "PCE")) {
-    intervention = which(rownames(dfaux) == "2008-11-01")
-    dummy[intervention] = 1
-  }
-  
   index = which(colnames(dfaux)==variable)
-  mat = cbind(embed(dfaux[,variable],n_lags+1),tail(dummy,nrow(dfaux)-n_lags),tail(dfaux[,-index],nrow(dfaux)-n_lags))
-  pretest=tfaux(mat,pre.testing="individual",fixed.controls = 1:n_lags)[-c(1:(n_lags+2))]
+  
+  mat = cbind(embed(dfaux[,variable],n_lags+1),tail(dfaux[,-index],nrow(dfaux)-n_lags))
+  pretest=tfaux(mat,pre.testing="individual",fixed.controls = 1:n_lags)[-c(1:(n_lags+1))]
   
   pretest[pretest!=0]=1
   aux = rep(0,ncol(dfaux))
@@ -261,33 +221,28 @@ runtfact=function(ind,df,variable,horizon,n_lags = 4){
   selected=which(aux==1)
   dfreduced = df[,selected]
   
-  prep_data = dataprep(ind,dfreduced,variable,horizon,n_lags, add_dummy = FALSE, factonly = TRUE)
+  prep_data = dataprep(ind,dfreduced,variable,horizon,n_lags, factonly = TRUE)
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
-  dummy = prep_data$dummy
   
   bb=Inf
   for(i in seq(5,20,5)){
-    m=lm(yin~Xin[,1:i]+dummy)
+    m=lm(yin~Xin[,1:i])
     crit=BIC(m)
     if(crit<bb){
       bb=crit
       modelest=m
       f.coef=coef(modelest)
-      coefdum=f.coef[length(f.coef)]
-      f.coef=f.coef[-length(f.coef)]
     }
   }
   coef=rep(0,ncol(Xin)+1)
   coef[1:length(f.coef)]=f.coef
-  coef=c(coef,coefdum)
   coef[is.na(coef)]=0
   
-  forecast=(cbind(1,Xout,0)%*%coef)[1]
+  forecast=(cbind(1,Xout)%*%coef)[1]
   
   ## outputs
-  
   outputs = list(coef = coef)
   
   return(list(forecast=forecast, outputs = outputs))
@@ -447,3 +402,38 @@ tfaux=function (mat, pre.testing = c("group-joint","joint","individual"), fixed.
   return(final.coef)
 }
 
+runlightgbm = function(ind, df, variable, horizon, n_lags = 4, extra_trees = FALSE) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  colnames(Xin) = paste0("Feature_", 1:ncol(Xin))
+  colnames(Xout) = paste0("Feature_", 1:ncol(Xin))
+  
+  dtrain = lightgbm::lgb.Dataset(data = Xin, label = yin)
+  
+  params_point = list(objective = "regression", extra_trees = extra_trees)
+  model_point = lightgbm::lightgbm(data = dtrain, params = params_point, verbose = -1)
+  forecast = predict(model_point, Xout)
+  
+  # Extract chosen variables from the point model
+  importance = lightgbm::lgb.importance(model_point)
+  chosen_variables = importance$Feature
+  
+  # # 3. Lower Bound
+  # params_lower = list(objective = "quantile", metric = "quantile", alpha = 0.025, extra_trees = extra_trees)
+  # model_lower = lightgbm::lightgbm(data = dtrain, params = params_lower, verbose = -1)
+  # lower = predict(model_lower, Xout)
+  # 
+  # # 4. Upper Bound 
+  # params_upper = list(objective = "quantile", metric = "quantile", alpha = 0.975, extra_trees = extra_trees)
+  # model_upper = lightgbm::lightgbm(data = dtrain, params = params_upper, verbose = -1)
+  # upper = predict(model_upper, Xout)
+  
+  outputs = list(
+    # lower = as.numeric(lower), 
+    # upper = as.numeric(upper), 
+    chosen_variables = chosen_variables
+  )
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
