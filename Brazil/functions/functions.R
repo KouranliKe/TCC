@@ -449,3 +449,87 @@ runlightgbm = function(ind, df, variable, horizon, n_lags = 4, extra_trees = FAL
   )
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
+
+runqlightgbm = function(ind, df, variable, horizon, n_lags = 4) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  
+  dtrain = lightgbm::lgb.Dataset(data = Xin, label = yin)
+  
+  params = list(objective = "quantile", metric = "quantile", alpha = 0.5)
+  model_point = lightgbm::lightgbm(data = dtrain, params = params, verbose = -1)
+  forecast = predict(model_point, Xout)
+  
+  importance = lightgbm::lgb.importance(model_point)
+  chosen_variables = importance$Feature
+  
+  # params_lower = list(objective = "quantile", metric = "quantile", alpha = 0.025)
+  # model_lower = lightgbm::lightgbm(data = dtrain, params = params_lower, verbose = -1)
+  # lower = predict(model_lower, Xout)
+  # 
+  # params_upper = list(objective = "quantile", metric = "quantile", alpha = 0.975)
+  # model_upper = lightgbm::lightgbm(data = dtrain, params = params_upper, verbose = -1)
+  # upper = predict(model_upper, Xout)
+  
+  outputs = list(
+    # lower = as.numeric(lower), 
+    # upper = as.numeric(upper), 
+    chosen_variables = chosen_variables
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+rungbm = function(ind, df, variable, horizon, n_lags = 4) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_data = as.data.frame(prep_data$Xin)
+  train_data$y_target = prep_data$yin
+  test_data = as.data.frame(prep_data$Xout)
+  
+  model_mean = gbm::gbm(y_target ~ ., data = train_data, distribution = "gaussian", n.trees = 100)
+  forecast = predict(model_mean, newdata = test_data, n.trees = 100)
+  
+  importance = summary(model_mean, n.trees = 100, plotit = FALSE)
+  chosen_variables = as.character(importance$var[importance$rel.inf > 0])
+  
+  # # 2. Lower Bound (alpha = 0.025)
+  # model_lower = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.025), n.trees = 100)
+  # lower = predict(model_lower, newdata = test_data, n.trees = 100)
+  # 
+  # # 3. Upper Bound (alpha = 0.975)
+  # model_upper = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.975), n.trees = 100)
+  # upper = predict(model_upper, newdata = test_data, n.trees = 100)
+  
+  outputs = list(
+    # lower = as.numeric(lower),
+    # upper = as.numeric(upper),
+    chosen_variables = chosen_variables
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+rungbmtuned = function(ind, df, variable, horizon, n_lags = 4) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  
+  model_tuned = EZtune::eztune(x = Xin, y = yin, method = "gbm")
+  forecast = predict(model_tuned, Xout)
+  best_model = model_tuned$model
+  
+  importance = summary(best_model, n.trees = model_tuned$n.trees, plotit = FALSE)
+  chosen_variables = as.character(importance$var[importance$rel.inf > 0])
+  
+  outputs = list(
+    best_trees = model_tuned$n.trees,
+    best_shrinkage = model_tuned$shrinkage,
+    best_depth = model_tuned$n.minobsinnode,
+    chosen_variables = chosen_variables
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}

@@ -7,6 +7,7 @@ library(HDeconometrics)
 library(glmnet)
 library(tidyverse)
 library(parallel)
+library(RhpcBLASctl)
 library(forecast)
 
 source("Brazil/functions/rolling_window.R")
@@ -14,9 +15,9 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name = "lightGBM-ERT"
+model_name = "GBM-Tuned"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function = runlightgbm
+model_function = rungbmtuned
 #####
 
 
@@ -47,7 +48,7 @@ for(i in for_ind){
     #,adaptive = TRUE # uncomment for adaLASSO
     #,seasonal=TRUE # uncomment for arima
     #,post = TRUE # uncomment for post-lasso
-    ,extra_trees = TRUE # uncomment for lightgbm-ert
+    #,extra_trees = TRUE # uncomment for lightgbm-ert
   )
   model_list[[i]] = model
   cat(i,"\n")
