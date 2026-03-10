@@ -1,4 +1,4 @@
-dataprep = function(ind,df,variable,horizon,n_lags = 4, add_dummy = TRUE, factonly = FALSE, nofact = FALSE)
+dataprep = function(ind,df,variable,horizon,n_lags = 4, factonly = FALSE, nofact = FALSE)
 {
   df=df[ind,]
   y=df[,variable]
@@ -21,25 +21,7 @@ dataprep = function(ind,df,variable,horizon,n_lags = 4, add_dummy = TRUE, facton
   Xout=t(as.vector(Xout))
   yin=tail(y,nrow(Xin))
   
-  if("2008-11-01" %in% names(yin)){
-    
-    dummy=rep(0,length(yin))
-    intervention=which(names(yin)=="2008-11-01")
-    dummy[intervention]=1
-    if(add_dummy == TRUE){
-      Xin=cbind(Xin,dummy)
-      Xout=cbind(Xout,0)
-    }
-    
-  }else{
-    dummy = rep(0,length(yin))
-    if(add_dummy == TRUE){
-      Xin=cbind(Xin,dummy)
-      Xout=cbind(Xout,0)
-    }
-  }
-  
-  return(list(dummy = dummy, Xin = Xin, Xout = Xout, yin = yin))
+  return(list(Xin = Xin, Xout = Xout, yin = yin))
   
 }
 
