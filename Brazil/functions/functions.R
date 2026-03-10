@@ -1,32 +1,50 @@
-dataprep = function(ind,df,variable,horizon,n_lags = 4, factonly = FALSE, nofact = FALSE)
-{
-  df=df[ind,]
-  y=df[,variable]
+dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, nofact = FALSE) {
+  df = df[ind,]
+  y = df[,variable]
   
-  if(nofact==TRUE){
-    x=df
-  }else{
-    factors=princomp(scale(df))$scores[,1:4]
+  if(nofact == TRUE){
+    x = df
+    base_names = colnames(df)
+  } else {
+    factors = princomp(scale(df))$scores[,1:4]
+    colnames(factors) = paste0("PC", 1:4)
+    
     if(factonly == TRUE){
-      x = cbind(df[,variable],factors)
-    }else{
-      x=cbind(df,factors)
+      x = cbind(df[,variable], factors)
+      base_names = c(variable, colnames(factors))
+      colnames(x) = base_names
+    } else {
+      x = cbind(df, factors)
+      base_names = c(colnames(df), colnames(factors))
+      colnames(x) = base_names
     }
   }
   
-  X=embed(as.matrix(x),n_lags)
+  row_dates = as.Date(rownames(df))
+  pandemic = ifelse(row_dates >= as.Date("2020-02-01") & row_dates <= as.Date("2022-05-31"), 1, 0)
+  x = cbind(x, pandemic)
+  base_names = c(base_names, 'pandemic')
+  colnames(x) = base_names
   
-  Xin=X[-c((nrow(X)-horizon+1):nrow(X)),]
-  Xout=X[nrow(X),]
-  Xout=t(as.vector(Xout))
-  yin=tail(y,nrow(Xin))
+  X = embed(as.matrix(x), n_lags)
+  
+  lags = rep(0:(n_lags - 1), each = length(base_names))
+  suffixes = ifelse(lags == 0, "", paste0("_lag", lags))
+  
+  col_names = paste0(rep(base_names, times = n_lags), suffixes)
+  colnames(X) = col_names
+  
+  Xin = X[-c((nrow(X)-horizon+1):nrow(X)),]
+  
+  Xout = X[nrow(X), , drop = FALSE] 
+  
+  yin = tail(y, nrow(Xin))
   
   return(list(Xin = Xin, Xout = Xout, yin = yin))
-  
 }
 
 runlasso=function(ind,df,variable,horizon, n_lags = 4, alpha = 1, alpha2 = 1, adaptive = FALSE){
-  
+  library(glmnet)
   prep_data = dataprep(ind,df,variable,horizon,n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
@@ -86,6 +104,7 @@ runrf=function(ind,df,variable,horizon,n_lags = 4){
 }
 
 runrfols=function(ind,df,variable,horizon,n_lags = 4){
+  library(randomForest)
   prep_data = dataprep(ind,df,variable,horizon,n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
@@ -142,7 +161,7 @@ runbagging=function(ind,df,variable,horizon,n_lags = 4){
   Xout = prep_data$Xout
   
   
-  modelest=bagging(Xin,yin,R=100,l=5,pre.testing = "group-joint")
+  modelest=bagging(Xin,yin,R=100,l=5,pre.testing = "individual")
   forecast = predict(modelest,Xout)
   
   ## outputs
@@ -251,7 +270,7 @@ runtfact=function(ind,df,variable,horizon,n_lags = 4){
 }
 
 runrlasso = function(ind, df, variable, horizon, n_lags = 4, post = FALSE) {
-  
+  library(hdm)
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
@@ -261,7 +280,7 @@ runrlasso = function(ind, df, variable, horizon, n_lags = 4, post = FALSE) {
   modelest = hdm::rlasso(x = Xin, y = yin, post = post)
   
   # Generate forecast
-  forecast = predict(modelest, newdata = Xout)
+  forecast = predict(modelest, newdata = unname(Xout))
   
   # Store coefficients as outputs
   outputs = list(coef = modelest$coefficients)
