@@ -1,40 +1,46 @@
-dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, nofact = FALSE) {
-  df = df[ind,]
-  y = df[,variable]
+dataprep = function(ind,df,variable,horizon,n_lags = 4, add_dummy = TRUE, factonly = FALSE, nofact = FALSE)
+{
+  df=df[ind,]
+  y=df[,variable]
   
-  if(nofact == TRUE){
-    x = df
-    base_names = colnames(df)
-  } else {
-    factors = princomp(scale(df))$scores[,1:4]
-    colnames(factors) = paste0("PC", 1:4)
-    
+  if(nofact==TRUE){
+    x=df
+  }else{
+    factors=princomp(scale(df))$scores[,1:4]
     if(factonly == TRUE){
-      x = cbind(df[,variable], factors)
-      base_names = c(variable, colnames(factors))
-      colnames(x) = base_names
-    } else {
-      x = cbind(df, factors)
-      base_names = c(colnames(df), colnames(factors))
-      colnames(x) = base_names
+      x = cbind(df[,variable],factors)
+    }else{
+      x=cbind(df,factors)
     }
   }
   
-  X = embed(as.matrix(x), n_lags)
+  X=embed(as.matrix(x),n_lags)
   
-  lags = rep(0:(n_lags - 1), each = length(base_names))
-  suffixes = ifelse(lags == 0, "", paste0("_lag", lags))
+  Xin=X[-c((nrow(X)-horizon+1):nrow(X)),]
+  Xout=X[nrow(X),]
+  Xout=t(as.vector(Xout))
+  yin=tail(y,nrow(Xin))
   
-  col_names = paste0(rep(base_names, times = n_lags), suffixes)
-  colnames(X) = col_names
+  if("2008-11-01" %in% names(yin)){
+    
+    dummy=rep(0,length(yin))
+    intervention=which(names(yin)=="2008-11-01")
+    dummy[intervention]=1
+    if(add_dummy == TRUE){
+      Xin=cbind(Xin,dummy)
+      Xout=cbind(Xout,0)
+    }
+    
+  }else{
+    dummy = rep(0,length(yin))
+    if(add_dummy == TRUE){
+      Xin=cbind(Xin,dummy)
+      Xout=cbind(Xout,0)
+    }
+  }
   
-  Xin = X[-c((nrow(X)-horizon+1):nrow(X)),]
+  return(list(dummy = dummy, Xin = Xin, Xout = Xout, yin = yin))
   
-  Xout = X[nrow(X), , drop = FALSE] 
-  
-  yin = tail(y, nrow(Xin))
-  
-  return(list(Xin = Xin, Xout = Xout, yin = yin))
 }
 
 runlasso=function(ind,df,variable,horizon, n_lags = 4, alpha = 1, alpha2 = 1, adaptive = FALSE){
