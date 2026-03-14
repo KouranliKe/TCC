@@ -147,33 +147,17 @@ runadalassorf=function(ind,df,variable,horizon,n_lags = 4){
   penalty = (abs(classo[-1])+1/sqrt(length(yin)))^(-1)
   adalasso = HDeconometrics::ic.glmnet(Xin,yin, penalty.factor = penalty)
   
-  selected=which(adalasso$coef[-1]!=0)
-  modelest=randomForest::randomForest(Xin[,selected],yin)
-  forecast=predict(modelest,Xout[selected])
+  selected=which(adalasso$coefficients[-1]!=0)
   
-  return(list(forecast=forecast))
-}
+  if(length(selected) == 0) {
+    return(list(forecast = mean(yin)))
+  }
+  
+  modelest=randomForest::randomForest(Xin[, selected, drop = FALSE], yin)
 
-runbagging=function(ind,df,variable,horizon,n_lags = 4){
-  prep_data = dataprep(ind,df,variable,horizon,n_lags)
-  Xin = prep_data$Xin
-  yin = prep_data$yin
-  Xout = prep_data$Xout
+  forecast=predict(modelest, Xout[, selected, drop = FALSE])
   
-  
-  modelest=bagging(Xin,yin,R=100,l=5,pre.testing = "individual")
-  forecast = predict(modelest,Xout)
-  
-  ## outputs
-  
-  nselect=modelest$coefficients
-  nselect[nselect!=0]=1
-  nselect[is.na(nselect)]=0
-  nselect=colSums(nselect)
-  
-  outputs = list(nselect = nselect)
-  
-  return(list(forecast=forecast, outputs = outputs))
+  return(list(forecast = as.numeric(forecast)))
 }
 
 runcsr=function(ind,df,variable,horizon,n_lags = 4){
@@ -435,7 +419,6 @@ runlightgbm = function(ind, df, variable, horizon, n_lags = 4, extra_trees = FAL
   model_point = lightgbm::lightgbm(data = dtrain, params = params_point, verbose = -1)
   forecast = predict(model_point, Xout)
   
-  # Extract chosen variables from the point model
   importance = lightgbm::lgb.importance(model_point)
   chosen_variables = importance$Feature
   
@@ -501,11 +484,9 @@ rungbm = function(ind, df, variable, horizon, n_lags = 4) {
   importance = summary(model_mean, n.trees = 100, plotit = FALSE)
   chosen_variables = as.character(importance$var[importance$rel.inf > 0])
   
-  # # 2. Lower Bound (alpha = 0.025)
   # model_lower = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.025), n.trees = 100)
   # lower = predict(model_lower, newdata = test_data, n.trees = 100)
   # 
-  # # 3. Upper Bound (alpha = 0.975)
   # model_upper = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.975), n.trees = 100)
   # upper = predict(model_upper, newdata = test_data, n.trees = 100)
   
@@ -518,25 +499,33 @@ rungbm = function(ind, df, variable, horizon, n_lags = 4) {
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
 
-rungbmtuned = function(ind, df, variable, horizon, n_lags = 4) {
+runrw = function(ind, df, variable, horizon, n_lags = 4) {
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
-  Xin = prep_data$Xin
-  yin = prep_data$yin
-  Xout = prep_data$Xout
+  forecast = prep_data$Xout[, variable]
   
-  model_tuned = EZtune::eztune(x = Xin, y = yin, method = "gbm")
-  forecast = predict(model_tuned, Xout)
-  best_model = model_tuned$model
+  return(list(forecast = as.numeric(forecast)))
+}
+
+runert = function(ind, df, variable, horizon, n_lags = 4) {
+  library(ranger)
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
   
-  importance = summary(best_model, n.trees = model_tuned$n.trees, plotit = FALSE)
-  chosen_variables = as.character(importance$var[importance$rel.inf > 0])
-  
-  outputs = list(
-    best_trees = model_tuned$n.trees,
-    best_shrinkage = model_tuned$shrinkage,
-    best_depth = model_tuned$n.minobsinnode,
-    chosen_variables = chosen_variables
+  modelest = ranger::ranger(
+    formula = y_target ~ ., 
+    data = train_df, 
+    num.trees = 10000, 
+    importance = 'impurity', 
+    splitrule = "extratrees", 
+    replace = FALSE, 
+    sample.fraction = 1
   )
+  
+  forecast = predict(modelest, data = test_df)$predictions
+  
+  outputs = list(importance = modelest$variable.importance)
   
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
