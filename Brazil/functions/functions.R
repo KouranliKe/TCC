@@ -529,3 +529,150 @@ runert = function(ind, df, variable, horizon, n_lags = 4) {
   
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
+
+runqert = function(ind, df, variable, horizon, n_lags = 4) {
+  library(ranger)
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  
+  modelest = ranger::ranger(
+    formula = y_target ~ ., 
+    data = train_df, 
+    num.trees = 10000, 
+    importance = 'impurity', 
+    splitrule = "extratrees", 
+    replace = FALSE, 
+    sample.fraction = 1,
+    quantreg = TRUE
+  )
+  
+  pred = predict(
+    modelest, 
+    data = test_df, 
+    type = "quantiles", 
+    quantiles = c(0.025, 0.5, 0.975)
+  )
+  
+  lower_bound = pred$predictions[1, 1] # 2.5% quantile
+  forecast    = pred$predictions[1, 2] # 50% quantile (Median)
+  upper_bound = pred$predictions[1, 3] # 97.5% quantile
+  
+  outputs = list(
+    importance = modelest$variable.importance,
+    lower = lower_bound,
+    upper = upper_bound
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runcatboost = function(ind, df, variable, horizon, n_lags = 4) {
+  library(catboost)
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  
+  train_pool = catboost.load_pool(data = Xin, label = yin)
+  test_pool = catboost.load_pool(data = Xout)
+  
+  params_point = list(loss_function = 'RMSE', logging_level = 'Silent', thread_count = 4) 
+  model_point = catboost.train(learn_pool = train_pool, params = params_point)
+  forecast = catboost.predict(model_point, test_pool)
+  
+  # params_lower = list(loss_function = 'Quantile:alpha=0.025', logging_level = 'Silent')
+  # model_lower = catboost.train(learn_pool = train_pool, params = params_lower)
+  # lower = catboost.predict(model_lower, test_pool)
+  # 
+  # params_upper = list(loss_function = 'Quantile:alpha=0.975', logging_level = 'Silent')
+  # model_upper = catboost.train(learn_pool = train_pool, params = params_upper)
+  # upper = catboost.predict(model_upper, test_pool)
+  
+  importance = catboost.get_feature_importance(model_point)
+
+  outputs = list(
+    importance = importance
+    # ,lower = as.numeric(lower)
+    # ,upper = as.numeric(upper)
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runnn3l = function(ind, df, variable, horizon, n_lags = 4) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  train_h2o = as.h2o(train_df)
+  test_h2o = as.h2o(test_df)
+  
+  y_col = "y_target"
+  x_cols = setdiff(names(train_h2o), y_col)
+  
+
+  modelest = h2o.deeplearning(
+    x = x_cols,
+    y = y_col,
+    training_frame = train_h2o,
+    activation = "Rectifier",
+    hidden = c(32, 16, 8),
+    epochs = 100,
+    train_samples_per_iteration = -2,
+    seed = 1
+  )
+
+  pred_h2o = h2o.predict(modelest, test_h2o)
+  forecast = as.numeric(as.vector(pred_h2o))
+  importance = h2o.varimp(modelest)
+  
+  h2o.rm(train_h2o)
+  h2o.rm(test_h2o)
+  h2o.rm(modelest)
+  
+  outputs = list(
+    importance = importance
+  )
+  
+  return(list(forecast = forecast, outputs = outputs))
+}
+
+runnn5l = function(ind, df, variable, horizon, n_lags = 4) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  
+  train_h2o = as.h2o(train_df)
+  test_h2o = as.h2o(test_df)
+  y_col = "y_target"
+  x_cols = setdiff(names(train_h2o), y_col)
+  
+  modelest = h2o.deeplearning(
+    x = x_cols,
+    y = y_col,
+    training_frame = train_h2o,
+    activation = "Rectifier",
+    hidden = c(32, 16, 16, 16, 8),
+    nfolds = 5,
+    epochs = 400,
+    train_samples_per_iteration = -2,
+    seed = 1
+  )
+  
+  pred_h2o = h2o.predict(modelest, test_h2o)
+  forecast = as.numeric(as.vector(pred_h2o))
+  importance = h2o.varimp(modelest)
+  
+  h2o.rm(train_h2o)
+  h2o.rm(test_h2o)
+  h2o.rm(modelest)
+  
+  outputs = list(
+    importance = importance
+  )
+  
+  return(list(forecast = forecast, outputs = outputs))
+}
