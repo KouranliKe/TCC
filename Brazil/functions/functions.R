@@ -20,12 +20,6 @@ dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, no
     }
   }
   
-  row_dates = as.Date(rownames(df))
-  pandemic = ifelse(row_dates >= as.Date("2020-02-01") & row_dates <= as.Date("2022-05-31"), 1, 0)
-  x = cbind(x, pandemic)
-  base_names = c(base_names, 'pandemic')
-  colnames(x) = base_names
-  
   X = embed(as.matrix(x), n_lags)
   
   lags = rep(0:(n_lags - 1), each = length(base_names))
@@ -43,44 +37,41 @@ dataprep = function(ind, df, variable, horizon, n_lags = 4, factonly = FALSE, no
   return(list(Xin = Xin, Xout = Xout, yin = yin))
 }
 
-runlasso=function(ind,df,variable,horizon, n_lags = 4, alpha = 1, alpha2 = 1, adaptive = FALSE){
+runlasso = function(ind, df, variable, horizon, n_lags = 4, alpha = 1, alpha2 = 1, adaptive = FALSE){
   library(glmnet)
-  prep_data = dataprep(ind,df,variable,horizon,n_lags)
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
   
-  modelest = ic.glmnet(Xin,yin,alpha = alpha)
-  if(adaptive==TRUE){
-    classo = coef(modelest)
-    penalty = (abs(classo[-1])+1/sqrt(length(yin)))^(-1)
-    modelest = ic.glmnet(Xin,yin, penalty.factor = penalty, alpha = alpha2)
+  modelest = cv.glmnet(Xin, yin, alpha = alpha)
+  
+  if(adaptive == TRUE){
+    classo = coef(modelest, s = "lambda.min")
+    classo_vals = as.numeric(classo)[-1] 
+    penalty = (abs(classo_vals) + 1/sqrt(length(yin)))^(-1)
+    modelest = cv.glmnet(Xin, yin, penalty.factor = penalty, alpha = alpha2)
   }
   
-  forecast=predict(modelest,Xout)
+  forecast = predict(modelest, newx = Xout, s = "lambda.min")
   
-  ### outputs ###
-  coeflvl=coef(modelest)[-1]
-  coefpar=coeflvl*apply(Xin,2,sd)
-  lambda=modelest$lambda
-  outputs=list(coeflvl=coeflvl,coefpar=coefpar,lambda=lambda)
+  coeflvl = as.numeric(coef(modelest, s = "lambda.min"))[-1]
+  coefpar = coeflvl * apply(Xin, 2, sd)
+  lambda = modelest$lambda.min
   
-  return(list(forecast=forecast, outputs=outputs))
+  outputs = list(coeflvl = coeflvl, coefpar = coefpar, lambda = lambda)
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
 
 runarima = function(ind, df, variable, horizon, seasonal = FALSE) {
-  
-  # Extract the historical target data for the current rolling window
   y_train = ts(df[ind, variable], frequency=12)
   
-  # Fit the ARIMA model automatically, using BIC for model selection
   modelest = forecast::auto.arima(y_train, ic = "bic", seasonal=seasonal)
   
-  # Forecast forward 'horizon' steps
   fcst = forecast::forecast(modelest, h = horizon)
   forecast_val = as.numeric(fcst$mean[horizon])
   
-  # Optional outputs to track what AR/MA order was selected in each window
   outputs = list(order = forecast::arimaorder(modelest))
   
   return(list(forecast = forecast_val, outputs = outputs))
@@ -136,31 +127,39 @@ runrfols=function(ind,df,variable,horizon,n_lags = 4){
   return(list(forecast=forecast))
 }
 
-runadalassorf=function(ind,df,variable,horizon,n_lags = 4){
-  prep_data = dataprep(ind,df,variable,horizon,n_lags)
+runadalassorf = function(ind, df, variable, horizon, n_lags = 4){
+  library(glmnet)
+  library(randomForest)
+  
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
   Xout = prep_data$Xout
   
-  lasso = HDeconometrics::ic.glmnet(Xin,yin)
-  classo = coef(lasso)
-  penalty = (abs(classo[-1])+1/sqrt(length(yin)))^(-1)
-  adalasso = HDeconometrics::ic.glmnet(Xin,yin, penalty.factor = penalty)
-  
-  selected=which(adalasso$coefficients[-1]!=0)
-  
-  if(length(selected) == 0) {
-    return(list(forecast = mean(yin)))
-  }
-  
-  modelest=randomForest::randomForest(Xin[, selected, drop = FALSE], yin)
+  cv_lasso = cv.glmnet(Xin, yin, alpha = 1)
+  classo = coef(cv_lasso, s = "lambda.min")
 
-  forecast=predict(modelest, Xout[, selected, drop = FALSE])
+  classo_vals = as.numeric(classo)[-1] 
+  penalty = (abs(classo_vals) + 1/sqrt(length(yin)))^(-1)
+  cv_adalasso = cv.glmnet(Xin, yin, penalty.factor = penalty, alpha = 1)
+  
+  cadalasso = coef(cv_adalasso, s = "lambda.min")
+  cadalasso_vals = as.numeric(cadalasso)[-1]
+  selected = which(cadalasso_vals != 0)
+  
+  # if(length(selected) == 0) {
+  #   return(list(forecast = mean(yin)))
+  # }
+  
+  modelest = randomForest::randomForest(x = Xin[, selected, drop = FALSE], y = yin)
+  
+  forecast = predict(modelest, newdata = Xout[, selected, drop = FALSE])
   
   return(list(forecast = as.numeric(forecast)))
 }
 
 runcsr=function(ind,df,variable,horizon,n_lags = 4){
+  library(HDeconometrics)
   prep_data = dataprep(ind,df,variable,horizon,n_lags)
   Xin = prep_data$Xin
   yin = prep_data$yin
@@ -272,63 +271,24 @@ runrlasso = function(ind, df, variable, horizon, n_lags = 4, post = FALSE) {
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
 
-accumulate_model = function(forecasts){
-  
-  acc3 = c(rep(NA,2),sapply(1:(nrow(forecasts)-2), function(x){
-    prod(1+diag(forecasts[x:(x+2),1:3]))-1
-  })) 
-  acc6 = c(rep(NA,5),sapply(1:(nrow(forecasts)-5), function(x){
-    prod(1+diag(forecasts[x:(x+5),1:6]))-1
-  }))
-  acc12 = c(rep(NA,11),sapply(1:(nrow(forecasts)-11), function(x){
-    prod(1+diag(forecasts[x:(x+11),1:12]))-1
-  }))
-  
-  forecasts = cbind(forecasts,acc3,acc6,acc12)
-  colnames(forecasts) = c(paste("t+",1:12,sep = ""),"acc3","acc6","acc12")
-  
-  return(forecasts)
-  
-}
-
-ic.glmnet = function (x, y, crit = c("bic", "aic", "aicc", 
-                                     "hqc"), alpha = 1, ...) 
-{
-  if (is.matrix(x) == FALSE) {
-    x = as.matrix(x)
-  }
-  if (is.vector(y) == FALSE) {
-    y = as.vector(y)
-  }
-  crit = match.arg(crit)
-  n = length(y)
-  model = glmnet(x = x, y = y, alpha = alpha,...)
-  coef = coef(model)
-  lambda = model$lambda
-  df = model$df
-  yhat = cbind(1, x) %*% coef
-  residuals = (y - yhat)
-  mse = colMeans(residuals^2)
-  sse = colSums(residuals^2)
-  nvar = df + 1
-  bic = n * log(mse) + nvar * log(n)
-  aic = n * log(mse) + 2 * nvar
-  aicc = aic + (2 * nvar * (nvar + 1))/(n - nvar - 1)
-  hqc = n * log(mse) + 2 * nvar * log(log(n))
-  sst = (n - 1) * var(y)
-  r2 = 1 - (sse/sst)
-  adjr2 = (1 - (1 - r2) * (n - 1)/(nrow(x) - nvar - 1))
-  crit = switch(crit, bic = bic, aic = aic, aicc = aicc, hqc = hqc)
-  selected = best.model = which(crit == min(crit))
-  ic = c(bic = bic[selected], aic = aic[selected], aicc = aicc[selected], 
-         hqc = hqc[selected])
-  result = list(coefficients = coef[, selected], ic = ic, lambda = lambda[selected], 
-                nvar = nvar[selected], glmnet = model, residuals = residuals[, 
-                                                                             selected], fitted.values = yhat[, selected], ic.range = crit, 
-                df = df, call = match.call())
-  class(result) = "ic.glmnet"
-  return(result)
-}
+# accumulate_model = function(forecasts){
+#   
+#   acc3 = c(rep(NA,2),sapply(1:(nrow(forecasts)-2), function(x){
+#     prod(1+diag(forecasts[x:(x+2),1:3]))-1
+#   })) 
+#   acc6 = c(rep(NA,5),sapply(1:(nrow(forecasts)-5), function(x){
+#     prod(1+diag(forecasts[x:(x+5),1:6]))-1
+#   }))
+#   acc12 = c(rep(NA,11),sapply(1:(nrow(forecasts)-11), function(x){
+#     prod(1+diag(forecasts[x:(x+11),1:12]))-1
+#   }))
+#   
+#   forecasts = cbind(forecasts,acc3,acc6,acc12)
+#   colnames(forecasts) = c(paste("t+",1:12,sep = ""),"acc3","acc6","acc12")
+#   
+#   return(forecasts)
+#   
+# }
 
 tfaux=function (mat, pre.testing = c("group-joint","joint","individual"), fixed.controls = NULL,
                 t.stat = 1.96,ngroups=10)

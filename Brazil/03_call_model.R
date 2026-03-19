@@ -4,7 +4,7 @@ set.seed(123)
 ### must add package for specific models ###
 # library(devtools)
 # install_github("gabrielrvsc/HDeconometrics")
-library(HDeconometrics)
+#library(HDeconometrics)
 library(tidyverse)
 library(parallel)
 library(RhpcBLASctl)
@@ -15,27 +15,27 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name = "NN-5_Layers"
+model_name <- "ERT"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function = runnn5l
+model_function <- runert
 #####
 
 
 load("Brazil/data/df_new_pipeline.rda")
 data <- df_final
-dates = data$date
-data = data%>%select(-date)%>%as.matrix()
-rownames(data) = as.character(dates)
+dates <- data$date
+data <- data%>%select(-date)%>%as.matrix()
+rownames(data) <- as.character(dates)
 
 ####### run rolling window ##########
-nwindows = 180
-y_out = tail(data[,"PRECOS12_IPCA12"],nwindows)
+nwindows <- 180
+y_out <- tail(data[,"PRECOS12_IPCA12"],nwindows)
 out_dates <- as.Date(tail(dates, nwindows))
 for_ind <- c(1, 3, 6)
-model_list = list()
+model_list <- list()
 
 # If running NNs, use sequential loop. For everything else use parallel
-if (identical(model_function, runnn3l) || identical(model_function, runnn5l) || identical(model_function, runnn8l)) {
+if (identical(model_function, runnn3l) || identical(model_function, runnn5l)) {#|| identical(model_function, runnn8l)) {
   library(h2o)
   
   for(i in for_ind){
@@ -65,13 +65,13 @@ if (identical(model_function, runnn3l) || identical(model_function, runnn5l) || 
       nwindow=nwindows+i-1,
       horizon=i,
       variable="PRECOS12_IPCA12"
-      ,n_lags = 12 # comment for ARIMA
+      ,n_lags = 12 # comment for (S)ARIMA
       #,seasonal=TRUE # uncomment for ARIMA
       #,adaptive=TRUE # uncomment for adaLASSO or adaElasticNet
-      #,post=TRUE # uncomment for post-LASSO
-      #,extra_trees = TRUE # uncomment for lightgbm-ert
       #,alpha=0.5 # uncomment for elastic net and adaelasticnet, set to 0 for ridge regression
       #,alpha2=0.5 # uncomment for adaelasticnet
+      #,post=TRUE # uncomment for post-LASSO
+      #,extra_trees = TRUE # uncomment for lightgbm-ert
     )
     return(model)
   }, mc.cores = num_cores)
@@ -86,6 +86,7 @@ forecasts = Reduce(
   f = cbind,
   x = lapply(model_list, function(x)head(x$forecast,nwindows))
   ) %>% as.matrix()
+
 outputs = lapply(model_list, function(x) head(x$outputs, nwindows))
 
 #forecasts = accumulate_model(forecasts)
@@ -101,7 +102,7 @@ plot(x = out_dates,
 
 lines(x = out_dates, 
       y = forecasts[,1], 
-      col = "blue", # Swapped to blue for better contrast
+      col = "blue",
       lwd = 1.5)
 
 abline(h = 0, lty = 2, col = "darkgray")
