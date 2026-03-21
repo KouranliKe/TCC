@@ -15,9 +15,9 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name <- "ERT"
+model_name <- "Q-RF"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function <- runert
+model_function <- runqrf
 #####
 
 
@@ -35,19 +35,20 @@ for_ind <- c(1, 3, 6)
 model_list <- list()
 
 # If running NNs, use sequential loop. For everything else use parallel
-if (identical(model_function, runnn3l) || identical(model_function, runnn5l)) {#|| identical(model_function, runnn8l)) {
+if (identical(model_function, runnn)) {
   library(h2o)
   
   for(i in for_ind){
     h2o.init(nthreads = -1, max_mem_size = "16G") 
     h2o.no_progress()
     model = rolling_window(
-      fn=model_function,
-      df=data,
-      nwindow=nwindows+i-1,
-      horizon=i,
-      variable="PRECOS12_IPCA12"
+      fn=model_function
+      ,df=data
+      ,nwindow=nwindows+i-1
+      ,horizon=i
+      ,variable="PRECOS12_IPCA12"
       ,n_lags = 12
+      ,n_layers = 8 # change to 5 or 8 for NN-5layers or NN-8_layers respectively
     )
     model_list[[i]] = model
     cat(i,"\n")
@@ -66,9 +67,9 @@ if (identical(model_function, runnn3l) || identical(model_function, runnn5l)) {#
       horizon=i,
       variable="PRECOS12_IPCA12"
       ,n_lags = 12 # comment for (S)ARIMA
-      #,seasonal=TRUE # uncomment for ARIMA
+      #,seasonal=TRUE # uncomment for SARIMA
       #,adaptive=TRUE # uncomment for adaLASSO or adaElasticNet
-      #,alpha=0.5 # uncomment for elastic net and adaelasticnet, set to 0 for ridge regression
+      #,alpha=0.5 # uncomment for elasticnet and adaelasticnet, set to 0 for ridge regression
       #,alpha2=0.5 # uncomment for adaelasticnet
       #,post=TRUE # uncomment for post-LASSO
       #,extra_trees = TRUE # uncomment for lightgbm-ert

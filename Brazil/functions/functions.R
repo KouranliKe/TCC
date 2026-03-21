@@ -433,6 +433,7 @@ runqlightgbm = function(ind, df, variable, horizon, n_lags = 4) {
 }
 
 rungbm = function(ind, df, variable, horizon, n_lags = 4) {
+  library(gbm)
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
   train_data = as.data.frame(prep_data$Xin)
   train_data$y_target = prep_data$yin
@@ -517,6 +518,41 @@ runqert = function(ind, df, variable, horizon, n_lags = 4) {
   
   lower_bound = pred$predictions[1, 1] # 2.5% quantile
   forecast    = pred$predictions[1, 2] # 50% quantile (Median)
+  upper_bound = pred$predictions[1, 3] # 97.5% quantile
+  
+  outputs = list(
+    importance = modelest$variable.importance,
+    lower = lower_bound,
+    upper = upper_bound
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runqrf = function(ind, df, variable, horizon, n_lags = 4) {
+  library(ranger)
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  
+  modelest = ranger::ranger(
+    formula = y_target ~ ., 
+    data = train_df, 
+    num.trees = 10000, 
+    importance = 'impurity', 
+    quantreg = TRUE
+  )
+  
+  pred = predict(
+    modelest, 
+    data = test_df, 
+    type = "quantiles", 
+    quantiles = c(0.025, 0.5, 0.975)
+  )
+  
+  lower_bound = pred$predictions[1, 1] # 2.5% quantile
+  forecast    = pred$predictions[1, 2] # 50% quantile (Median point forecast)
   upper_bound = pred$predictions[1, 3] # 97.5% quantile
   
   outputs = list(
@@ -635,4 +671,83 @@ runnn5l = function(ind, df, variable, horizon, n_lags = 4) {
   )
   
   return(list(forecast = forecast, outputs = outputs))
+}
+
+runnn = function(ind, df, variable, horizon, n_lags = 4, n_layers = 3) {
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  
+  train_h2o = as.h2o(train_df)
+  test_h2o = as.h2o(test_df)
+  y_col = "y_target"
+  x_cols = setdiff(names(train_h2o), y_col)
+  
+ if (n_layers == 3) {
+   hidden = c(32, 16, 8)
+   nfolds = 0
+   epochs = 100
+ } else if (n_layers == 5) {
+   hidden = c(32, 16, 16, 16, 8)
+   nfolds = 5
+   epochs = 400
+ } else if (n_layers == 8) {
+   hidden = c(32, 16, 16, 16, 16, 16, 16, 8)
+   nfolds = 5
+   epochs = 400
+ }
+  
+  modelest = h2o.deeplearning(
+    x = x_cols,
+    y = y_col,
+    training_frame = train_h2o,
+    activation = "Rectifier",
+    hidden = hidden,
+    nfolds = nfolds,
+    epochs = epochs,
+    train_samples_per_iteration = -2,
+    seed = 1
+  )
+  
+  pred_h2o = h2o.predict(modelest, test_h2o)
+  forecast = as.numeric(as.vector(pred_h2o))
+  importance = h2o.varimp(modelest)
+  
+  h2o.rm(train_h2o)
+  h2o.rm(test_h2o)
+  h2o.rm(modelest)
+  
+  outputs = list(
+    importance = importance
+  )
+  
+  return(list(forecast = forecast, outputs = outputs))
+}
+
+runrftuned = function(ind, df, variable, horizon, n_lags = 4) {
+  library(tuneRanger)
+  library(mlr)
+
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  train_df = as.data.frame(prep_data$Xin)
+  train_df$y_target = prep_data$yin
+  test_df = as.data.frame(prep_data$Xout)
+  task = mlr::makeRegrTask(data = train_df, target = "y_target")
+
+  tuned_rf = tuneRanger::tuneRanger(
+    task = task, 
+    measure = list(mse), 
+    num.trees = 500,
+    show.info = FALSE
+  )
+
+  pred = predict(tuned_rf$model, newdata = test_df)
+  forecast = pred$data$response
+  
+  outputs = list(
+    recommended_pars = tuned_rf$recommended.pars
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
 }

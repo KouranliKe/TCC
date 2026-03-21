@@ -75,7 +75,7 @@ if (!"ARIMA" %in% results_df$Model) {
 }
 
 # 5. Print out the final table sorted by h=1 performance
-final_results <- results_df %>% arrange(RMSE_h6)
+final_results <- results_df %>% arrange(RMSE_h1)
 
 print("Forecast Evaluation Results (Sorted by h=1 RMSE):")
 print(final_results)
