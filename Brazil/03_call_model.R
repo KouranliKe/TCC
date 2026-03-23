@@ -15,9 +15,9 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name <- "Q-RF"
+model_name <- "SVR"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function <- runqrf
+model_function <- runsvr
 #####
 
 
@@ -34,13 +34,16 @@ out_dates <- as.Date(tail(dates, nwindows))
 for_ind <- c(1, 3, 6)
 model_list <- list()
 
-# If running NNs, use sequential loop. For everything else use parallel
-if (identical(model_function, runnn)) {
-  library(h2o)
-  
+# If running NNs or LLF, use sequential loop. For everything else use parallel
+if (identical(model_function, runnn) || identical(model_function, runllf)) {
   for(i in for_ind){
-    h2o.init(nthreads = -1, max_mem_size = "16G") 
-    h2o.no_progress()
+    
+    if (identical(model_function, runnn)) {
+      library(h2o)
+      h2o.init(nthreads = -1, max_mem_size = "16G")
+      h2o.no_progress()
+    }
+    
     model = rolling_window(
       fn=model_function
       ,df=data
@@ -48,14 +51,18 @@ if (identical(model_function, runnn)) {
       ,horizon=i
       ,variable="PRECOS12_IPCA12"
       ,n_lags = 12
-      ,n_layers = 8 # change to 5 or 8 for NN-5layers or NN-8_layers respectively
+      #,n_layers = 8 # Uncomment for NNs, change to 3, 5 or 8 for NN-3_layers NN-5_layers or NN-8_layers respectively
     )
     model_list[[i]] = model
     cat(i,"\n")
+    
+    if (identical(model_function, runnn)) {
     h2o.shutdown(prompt = FALSE)
     gc()
-    Sys.sleep(2) # to give the virtual machine time to properly shut down
-  }
+    Sys.sleep(5) # to give the virtual machine time to properly shut down
+    }
+  
+    }
 } else {
   num_cores <- min(length(for_ind), detectCores() - 1)
   
@@ -73,6 +80,7 @@ if (identical(model_function, runnn)) {
       #,alpha2=0.5 # uncomment for adaelasticnet
       #,post=TRUE # uncomment for post-LASSO
       #,extra_trees = TRUE # uncomment for lightgbm-ert
+      #,method='svm' # Uncomment and change for desired tuning method in runeztune
     )
     return(model)
   }, mc.cores = num_cores)

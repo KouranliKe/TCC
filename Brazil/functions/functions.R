@@ -382,19 +382,7 @@ runlightgbm = function(ind, df, variable, horizon, n_lags = 4, extra_trees = FAL
   importance = lightgbm::lgb.importance(model_point)
   chosen_variables = importance$Feature
   
-  # # 3. Lower Bound
-  # params_lower = list(objective = "quantile", metric = "quantile", alpha = 0.025, extra_trees = extra_trees)
-  # model_lower = lightgbm::lightgbm(data = dtrain, params = params_lower, verbose = -1)
-  # lower = predict(model_lower, Xout)
-  # 
-  # # 4. Upper Bound 
-  # params_upper = list(objective = "quantile", metric = "quantile", alpha = 0.975, extra_trees = extra_trees)
-  # model_upper = lightgbm::lightgbm(data = dtrain, params = params_upper, verbose = -1)
-  # upper = predict(model_upper, Xout)
-  
   outputs = list(
-    # lower = as.numeric(lower), 
-    # upper = as.numeric(upper), 
     chosen_variables = chosen_variables
   )
   return(list(forecast = as.numeric(forecast), outputs = outputs))
@@ -415,17 +403,7 @@ runqlightgbm = function(ind, df, variable, horizon, n_lags = 4) {
   importance = lightgbm::lgb.importance(model_point)
   chosen_variables = importance$Feature
   
-  # params_lower = list(objective = "quantile", metric = "quantile", alpha = 0.025)
-  # model_lower = lightgbm::lightgbm(data = dtrain, params = params_lower, verbose = -1)
-  # lower = predict(model_lower, Xout)
-  # 
-  # params_upper = list(objective = "quantile", metric = "quantile", alpha = 0.975)
-  # model_upper = lightgbm::lightgbm(data = dtrain, params = params_upper, verbose = -1)
-  # upper = predict(model_upper, Xout)
-  
   outputs = list(
-    # lower = as.numeric(lower), 
-    # upper = as.numeric(upper), 
     chosen_variables = chosen_variables
   )
   
@@ -445,15 +423,7 @@ rungbm = function(ind, df, variable, horizon, n_lags = 4) {
   importance = summary(model_mean, n.trees = 100, plotit = FALSE)
   chosen_variables = as.character(importance$var[importance$rel.inf > 0])
   
-  # model_lower = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.025), n.trees = 100)
-  # lower = predict(model_lower, newdata = test_data, n.trees = 100)
-  # 
-  # model_upper = gbm::gbm(y_target ~ ., data = train_data, distribution = list(name = "quantile", alpha = 0.975), n.trees = 100)
-  # upper = predict(model_upper, newdata = test_data, n.trees = 100)
-  
   outputs = list(
-    # lower = as.numeric(lower),
-    # upper = as.numeric(upper),
     chosen_variables = chosen_variables
   )
   
@@ -597,82 +567,6 @@ runcatboost = function(ind, df, variable, horizon, n_lags = 4) {
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
 
-runnn3l = function(ind, df, variable, horizon, n_lags = 4) {
-  prep_data = dataprep(ind, df, variable, horizon, n_lags)
-  train_df = as.data.frame(prep_data$Xin)
-  train_df$y_target = prep_data$yin
-  test_df = as.data.frame(prep_data$Xout)
-  train_h2o = as.h2o(train_df)
-  test_h2o = as.h2o(test_df)
-  
-  y_col = "y_target"
-  x_cols = setdiff(names(train_h2o), y_col)
-  
-
-  modelest = h2o.deeplearning(
-    x = x_cols,
-    y = y_col,
-    training_frame = train_h2o,
-    activation = "Rectifier",
-    hidden = c(32, 16, 8),
-    epochs = 100,
-    train_samples_per_iteration = -2,
-    seed = 1
-  )
-
-  pred_h2o = h2o.predict(modelest, test_h2o)
-  forecast = as.numeric(as.vector(pred_h2o))
-  importance = h2o.varimp(modelest)
-  
-  h2o.rm(train_h2o)
-  h2o.rm(test_h2o)
-  h2o.rm(modelest)
-  
-  outputs = list(
-    importance = importance
-  )
-  
-  return(list(forecast = forecast, outputs = outputs))
-}
-
-runnn5l = function(ind, df, variable, horizon, n_lags = 4) {
-  prep_data = dataprep(ind, df, variable, horizon, n_lags)
-  train_df = as.data.frame(prep_data$Xin)
-  train_df$y_target = prep_data$yin
-  test_df = as.data.frame(prep_data$Xout)
-  
-  train_h2o = as.h2o(train_df)
-  test_h2o = as.h2o(test_df)
-  y_col = "y_target"
-  x_cols = setdiff(names(train_h2o), y_col)
-  
-  modelest = h2o.deeplearning(
-    x = x_cols,
-    y = y_col,
-    training_frame = train_h2o,
-    activation = "Rectifier",
-    hidden = c(32, 16, 16, 16, 8),
-    nfolds = 5,
-    epochs = 400,
-    train_samples_per_iteration = -2,
-    seed = 1
-  )
-  
-  pred_h2o = h2o.predict(modelest, test_h2o)
-  forecast = as.numeric(as.vector(pred_h2o))
-  importance = h2o.varimp(modelest)
-  
-  h2o.rm(train_h2o)
-  h2o.rm(test_h2o)
-  h2o.rm(modelest)
-  
-  outputs = list(
-    importance = importance
-  )
-  
-  return(list(forecast = forecast, outputs = outputs))
-}
-
 runnn = function(ind, df, variable, horizon, n_lags = 4, n_layers = 3) {
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
   train_df = as.data.frame(prep_data$Xin)
@@ -725,28 +619,121 @@ runnn = function(ind, df, variable, horizon, n_lags = 4, n_layers = 3) {
   return(list(forecast = forecast, outputs = outputs))
 }
 
-runrftuned = function(ind, df, variable, horizon, n_lags = 4) {
-  library(tuneRanger)
-  library(mlr)
+runllf = function(ind, df, variable, horizon, n_lags = 4) {
+  library(grf)
 
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
-  train_df = as.data.frame(prep_data$Xin)
-  train_df$y_target = prep_data$yin
-  test_df = as.data.frame(prep_data$Xout)
-  task = mlr::makeRegrTask(data = train_df, target = "y_target")
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
 
-  tuned_rf = tuneRanger::tuneRanger(
-    task = task, 
-    measure = list(mse), 
-    num.trees = 500,
-    show.info = FALSE
+  modelest = grf::ll_regression_forest(
+    X = Xin,
+    Y = yin,
+    num.trees = 10000,
+    enable.ll.split = FALSE
   )
 
-  pred = predict(tuned_rf$model, newdata = test_df)
-  forecast = pred$data$response
+  pred = predict(modelest, newdata = Xout)
+  forecast = pred$predictions[1]
+  importance = grf::variable_importance(modelest)
+
+  outputs = list(
+    importance = importance
+  )
+
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runsvr = function(ind, df, variable, horizon, n_lags = 4) {
+  library(e1071)
+
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+
+  cost_grid = c(1, 10, 50, 100, 500, 1000, 2000)
+  gamma_grid = c(1e-6, 1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 0.1)
+  epsilon_grid = c(0.001, 0.01, 0.05, 0.1, 0.2)
+
+  train_size = floor(0.8 * nrow(Xin))
+  val_idx = (train_size + 1):nrow(Xin)
+
+  Xin_train = Xin[1:train_size, , drop = FALSE]
+  yin_train = yin[1:train_size]
+
+  Xin_val = Xin[val_idx, , drop = FALSE]
+  yin_val = yin[val_idx]
+
+  best_rmse = Inf
+  best_params = list(cost = 1000, gamma = 1e-6, epsilon = 0.1)
+
+  for (c in cost_grid) {
+    for (g in gamma_grid) {
+      for (e in epsilon_grid) {
+
+        temp_model = e1071::svm(
+          x = Xin_train,
+          y = yin_train,
+          type = "eps-regression",
+          kernel = "radial",
+          cost = c,
+          gamma = g,
+          epsilon = e
+        )
+
+        val_preds = predict(temp_model, newdata = Xin_val)
+        rmse = sqrt(mean((yin_val - val_preds)^2))
+
+        if (!is.na(rmse) && rmse < best_rmse) {
+          best_rmse = rmse
+          best_params = list(cost = c, gamma = g, epsilon = e)
+        }
+      }
+    }
+  }
+
+  final_model = e1071::svm(
+    x = Xin,
+    y = yin,
+    type = "eps-regression",
+    kernel = "radial",
+    cost = best_params$cost,
+    gamma = best_params$gamma,
+    epsilon = best_params$epsilon
+  )
+
+  forecast = predict(final_model, newdata = Xout)
+
+  outputs = list(
+    best_cost = best_params$cost,
+    best_gamma = best_params$gamma,
+    best_epsilon = best_params$epsilon,
+    tot_SV = final_model$tot.SV
+  )
+
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runrvm = function(ind, df, variable, horizon, n_lags = 4) {
+  library(kernlab)
+
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = as.matrix(prep_data$Xin)
+  yin = as.numeric(prep_data$yin)
+  Xout = as.matrix(prep_data$Xout)
+  
+  modelest = kernlab::rvm(
+    x = Xin, 
+    y = yin, 
+    type = "regression"
+  )
+  
+  forecast = predict(modelest, newdata = Xout)
   
   outputs = list(
-    recommended_pars = tuned_rf$recommended.pars
+    nRV = modelest@nRV
   )
   
   return(list(forecast = as.numeric(forecast), outputs = outputs))
