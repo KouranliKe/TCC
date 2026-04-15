@@ -15,9 +15,9 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name <- "SVR"
+model_name <- "ARIMA"
 ## The function called to run models is model_function, which is a function from functions.R
-model_function <- runsvr
+model_function <- runarima
 #####
 
 
@@ -52,6 +52,7 @@ if (identical(model_function, runnn) || identical(model_function, runllf)) {
       ,variable="PRECOS12_IPCA12"
       ,n_lags = 12
       #,n_layers = 8 # Uncomment for NNs, change to 3, 5 or 8 for NN-3_layers NN-5_layers or NN-8_layers respectively
+      #,honesty = TRUE # Uncomment for LLF honest
     )
     model_list[[i]] = model
     cat(i,"\n")
@@ -73,8 +74,8 @@ if (identical(model_function, runnn) || identical(model_function, runllf)) {
       nwindow=nwindows+i-1,
       horizon=i,
       variable="PRECOS12_IPCA12"
-      ,n_lags = 12 # comment for (S)ARIMA
-      #,seasonal=TRUE # uncomment for SARIMA
+      #,n_lags = 12 # comment for (S)ARIMA
+      ,seasonal=FALSE # uncomment for SARIMA
       #,adaptive=TRUE # uncomment for adaLASSO or adaElasticNet
       #,alpha=0.5 # uncomment for elasticnet and adaelasticnet, set to 0 for ridge regression
       #,alpha2=0.5 # uncomment for adaelasticnet

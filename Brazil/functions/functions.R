@@ -619,7 +619,7 @@ runnn = function(ind, df, variable, horizon, n_lags = 4, n_layers = 3) {
   return(list(forecast = forecast, outputs = outputs))
 }
 
-runllf = function(ind, df, variable, horizon, n_lags = 4) {
+runllf = function(ind, df, variable, horizon, n_lags = 4, honesty = FALSE) {
   library(grf)
 
   prep_data = dataprep(ind, df, variable, horizon, n_lags)
@@ -631,7 +631,8 @@ runllf = function(ind, df, variable, horizon, n_lags = 4) {
     X = Xin,
     Y = yin,
     num.trees = 10000,
-    enable.ll.split = FALSE
+    enable.ll.split = FALSE,
+    honesty = honesty
   )
 
   pred = predict(modelest, newdata = Xout)
@@ -734,6 +735,91 @@ runrvm = function(ind, df, variable, horizon, n_lags = 4) {
   
   outputs = list(
     nRV = modelest@nRV
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runbart = function(ind, df, variable, horizon, n_lags = 4, ntree = 200) {
+  library(dbarts)
+  
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  
+  naive_sigma = sd(yin)
+  
+  if(is.na(naive_sigma) || naive_sigma == 0) {
+    naive_sigma = 0.001 
+  }
+  
+  modelest = dbarts::bart(
+    x.train = Xin, 
+    y.train = yin, 
+    x.test = Xout,
+    ntree = ntree, 
+    ndpost = 1000, 
+    nskip = 250, 
+    keeptrees = FALSE, 
+    verbose = FALSE,
+    sigest = naive_sigma,
+    nthread = 3
+  )
+  
+  forecast = modelest$yhat.test.mean
+  lower = apply(modelest$yhat.test, 2, quantile, probs = 0.025)
+  upper = apply(modelest$yhat.test, 2, quantile, probs = 0.975)
+  
+  # FIX: Calculate the mean of the posterior draws for each variable
+  importance = colMeans(modelest$varcount)
+  names(importance) = colnames(Xin) # Attach feature names to the vector
+  
+  outputs = list(
+    importance = importance,
+    lower = as.numeric(lower),
+    upper = as.numeric(upper)
+  )
+  
+  return(list(forecast = as.numeric(forecast), outputs = outputs))
+}
+
+runmars = function(ind, df, variable, horizon, n_lags = 4, degree = 2) {
+  # Requires the 'earth' package
+  library(earth)
+  
+  prep_data = dataprep(ind, df, variable, horizon, n_lags)
+  Xin = prep_data$Xin
+  yin = prep_data$yin
+  Xout = prep_data$Xout
+  
+  # Fit the MARS model
+  # degree = 2 allows the model to look for two-way interactions between variables
+  modelest = earth::earth(
+    x = Xin, 
+    y = yin, 
+    degree = degree,
+    pmethod = "cv",     # Cross-validation for pruning
+    nfold = 5,          # 5-fold CV
+    keepxy = FALSE      # Saves memory
+  )
+  
+  # Generate forecast
+  forecast = predict(modelest, newdata = Xout)
+  
+  # Extract variable importance 
+  # earth calculates importance based on Generalized Cross-Validation (GCV)
+  imp_matrix = earth::evimp(modelest)
+  
+  # evimp can return empty if the model prunes everything down to an intercept
+  if (!is.null(imp_matrix) && nrow(imp_matrix) > 0) {
+    importance = imp_matrix[, "gcv"]
+  } else {
+    importance = NA
+  }
+  
+  outputs = list(
+    importance = importance
   )
   
   return(list(forecast = as.numeric(forecast), outputs = outputs))
