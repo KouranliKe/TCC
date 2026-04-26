@@ -271,25 +271,6 @@ runrlasso = function(ind, df, variable, horizon, n_lags = 4, post = FALSE) {
   return(list(forecast = as.numeric(forecast), outputs = outputs))
 }
 
-# accumulate_model = function(forecasts){
-#   
-#   acc3 = c(rep(NA,2),sapply(1:(nrow(forecasts)-2), function(x){
-#     prod(1+diag(forecasts[x:(x+2),1:3]))-1
-#   })) 
-#   acc6 = c(rep(NA,5),sapply(1:(nrow(forecasts)-5), function(x){
-#     prod(1+diag(forecasts[x:(x+5),1:6]))-1
-#   }))
-#   acc12 = c(rep(NA,11),sapply(1:(nrow(forecasts)-11), function(x){
-#     prod(1+diag(forecasts[x:(x+11),1:12]))-1
-#   }))
-#   
-#   forecasts = cbind(forecasts,acc3,acc6,acc12)
-#   colnames(forecasts) = c(paste("t+",1:12,sep = ""),"acc3","acc6","acc12")
-#   
-#   return(forecasts)
-#   
-# }
-
 tfaux=function (mat, pre.testing = c("group-joint","joint","individual"), fixed.controls = NULL,
                 t.stat = 1.96,ngroups=10)
 {
