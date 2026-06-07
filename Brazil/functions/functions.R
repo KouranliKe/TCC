@@ -752,55 +752,13 @@ runbart = function(ind, df, variable, horizon, n_lags = 4, ntree = 200) {
   lower = apply(modelest$yhat.test, 2, quantile, probs = 0.025)
   upper = apply(modelest$yhat.test, 2, quantile, probs = 0.975)
   
-  # FIX: Calculate the mean of the posterior draws for each variable
   importance = colMeans(modelest$varcount)
-  names(importance) = colnames(Xin) # Attach feature names to the vector
+  names(importance) = colnames(Xin)
   
   outputs = list(
     importance = importance,
     lower = as.numeric(lower),
     upper = as.numeric(upper)
-  )
-  
-  return(list(forecast = as.numeric(forecast), outputs = outputs))
-}
-
-runmars = function(ind, df, variable, horizon, n_lags = 4, degree = 2) {
-  # Requires the 'earth' package
-  library(earth)
-  
-  prep_data = dataprep(ind, df, variable, horizon, n_lags)
-  Xin = prep_data$Xin
-  yin = prep_data$yin
-  Xout = prep_data$Xout
-  
-  # Fit the MARS model
-  # degree = 2 allows the model to look for two-way interactions between variables
-  modelest = earth::earth(
-    x = Xin, 
-    y = yin, 
-    degree = degree,
-    pmethod = "cv",     # Cross-validation for pruning
-    nfold = 5,          # 5-fold CV
-    keepxy = FALSE      # Saves memory
-  )
-  
-  # Generate forecast
-  forecast = predict(modelest, newdata = Xout)
-  
-  # Extract variable importance 
-  # earth calculates importance based on Generalized Cross-Validation (GCV)
-  imp_matrix = earth::evimp(modelest)
-  
-  # evimp can return empty if the model prunes everything down to an intercept
-  if (!is.null(imp_matrix) && nrow(imp_matrix) > 0) {
-    importance = imp_matrix[, "gcv"]
-  } else {
-    importance = NA
-  }
-  
-  outputs = list(
-    importance = importance
   )
   
   return(list(forecast = as.numeric(forecast), outputs = outputs))

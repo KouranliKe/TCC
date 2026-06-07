@@ -15,7 +15,7 @@ source("Brazil/functions/functions.R")
 
 #####
 ## The file with the forecasts will be saved with model_name
-model_name <- "ARIMA"
+model_name <- "RVM"
 ## The function called to run models is model_function, which is a function from functions.R
 model_function <- runarima
 #####
@@ -103,15 +103,15 @@ outputs = lapply(model_list, function(x) head(x$outputs, nwindows))
 
 # plotting forecasted vs actuals
 plot(x = out_dates, 
-     y = y_out, 
+     y = y_out*100, 
      type = "l", 
      col = "black",
      xlab = "Date", 
      ylab = "IPCA", 
-     main = paste(model_name, "Forecast vs Actual (1-Step Ahead)"))
+     main = paste(model_name, "Forecast vs Actual (3-Steps Ahead)"))
 
 lines(x = out_dates, 
-      y = forecasts[,1], 
+      y = forecasts[,2]*100, 
       col = "blue",
       lwd = 1.5)
 
@@ -123,7 +123,98 @@ f_rmse <- function(x, y) {
 }
 rmse <- apply(forecasts, 2, f_rmse, y = y_out) %>% print()
 
+
+
+
+
+svg(
+  filename = paste0("Brazil/plots/", model_name, "_forecast.svg"),
+  width = 9,
+  height = 3.5
+)
+
+plot(x = out_dates, 
+     y = y_out * 100, 
+     type = "l", 
+     col = "black",
+     xlab = "Date", 
+     ylab = "PRECOS12_IPCA12", 
+     main = paste(model_name, "Forecast vs Actual (3-Steps Ahead)"))
+
+lines(x = out_dates, 
+      y = forecasts[,2] * 100, 
+      col = "blue",
+      lwd = 1.5)
+
+abline(h = 0, lty = 2, col = "darkgray")
+
+dev.off()
+
+
+
+
+
 # Save results
 save(forecasts,
      outputs,
      file = paste("Brazil/forecasts/",model_name,".rda",sep = ""))
+
+
+
+
+
+# Data frame para o gráfico
+plot_df <- data.frame(
+  Date = out_dates,
+  Actual = y_out * 100,
+  Forecast = forecasts[, 2] * 100
+)
+
+plot_df_long <- plot_df %>%
+  pivot_longer(
+    cols = c(Actual, Forecast),
+    names_to = "Series",
+    values_to = "Value"
+  )
+
+# Criar gráfico
+p <- ggplot(plot_df_long,
+            aes(x = Date, y = Value, color = Series)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(
+    values = c(
+      "Actual" = "black",
+      "Forecast" = "red"
+    ),
+    labels = c(
+      "Actual" = "Observed",
+      "Forecast" = "RVM forecast"
+    )
+  ) +
+  labs(
+    title = paste(model_name, "Forecast vs Actual (3-Steps Ahead)"),
+    x = "Date",
+    y = "PRECOS12_IPCA12",
+    color = NULL
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "darkgray"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  )
+
+# Exibir
+print(p)
+
+# Salvar em SVG
+ggsave(
+  filename = paste0("Brazil/plots/", model_name, "_forecast.svg"),
+  plot = p,
+  width = 9,
+  height = 3.5,
+  units = "in"
+)
